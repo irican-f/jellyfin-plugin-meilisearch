@@ -1,9 +1,10 @@
-﻿namespace Jellyfin.Plugin.Meilisearch;
+namespace Jellyfin.Plugin.Meilisearch;
 
 public record MeilisearchItem(
     string Guid,
     string? Type,
     string? ParentId,
+    string? LibraryId,
     string? Name,
     string? Overview,
     string? OriginalTitle,

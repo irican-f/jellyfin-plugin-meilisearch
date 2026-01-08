@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using Jellyfin.Database.Implementations;
 using Jellyfin.Database.Implementations.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -17,16 +17,30 @@ public class EfCoreIndexer(
         var context = dbProvider.DbContextFactory!.CreateDbContext();
         Status["Database"] = context.Database.GetDbConnection().ConnectionString;
 
-        return Task.FromResult(context.BaseItems.ToImmutableList().Select(ToMeilisearchItem).ToImmutableList());
+        // Get all CollectionFolder (library) IDs
+        var libraryIds = context.BaseItems
+            .Where(b => b.Type != null && b.Type.Contains("CollectionFolder"))
+            .Select(b => b.Id)
+            .ToHashSet();
+
+        // Build a map of item -> library ID using ancestors
+        var itemToLibrary = context.AncestorIds
+            .Where(a => libraryIds.Contains(a.ParentItemId))
+            .ToDictionary(a => a.ItemId, a => a.ParentItemId.ToString("N"));
+
+        var items = context.BaseItems.ToImmutableList();
+        return Task.FromResult(items.Select(item => ToMeilisearchItem(item, itemToLibrary)).ToImmutableList());
     }
 
-
-    private static MeilisearchItem ToMeilisearchItem(BaseItemEntity item)
+    private static MeilisearchItem ToMeilisearchItem(BaseItemEntity item, Dictionary<Guid, string> itemToLibrary)
     {
+        itemToLibrary.TryGetValue(item.Id, out var libraryId);
+        
         return new MeilisearchItem(
             Guid: item.Id.ToString(),
             Type: item.Type,
             ParentId: item.ParentId.ToString(),
+            LibraryId: libraryId,
             Name: item.Name,
             Overview: item.Overview,
             OriginalTitle: item.OriginalTitle,

@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using MediaBrowser.Common.Configuration;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -27,18 +27,23 @@ public class DbIndexer(
         }.ToString());
         await connection.OpenAsync();
 
-        // Query all base items
+        // Query all base items with library ID from AncestorIds
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
             SELECT
-                Id, Type, ParentId, CommunityRating, 
-                Name, Overview, ProductionYear, Genres, 
-                Studios, Tags, IsFolder, CriticRating, 
-                OriginalTitle, SeriesName, Artists, 
-                AlbumArtists, Path, Tagline
+                bi.Id, bi.Type, bi.ParentId, bi.CommunityRating, 
+                bi.Name, bi.Overview, bi.ProductionYear, bi.Genres, 
+                bi.Studios, bi.Tags, bi.IsFolder, bi.CriticRating, 
+                bi.OriginalTitle, bi.SeriesName, bi.Artists, 
+                bi.AlbumArtists, bi.Path, bi.Tagline,
+                (SELECT a.AncestorIdText FROM AncestorIds a 
+                 INNER JOIN BaseItems lib ON REPLACE(a.AncestorIdText, '-', '') = REPLACE(lib.Id, '-', '')
+                 WHERE a.ItemId = bi.Id 
+                 AND lib.Type LIKE '%CollectionFolder%'
+                 LIMIT 1) as LibraryId
             FROM 
-                BaseItems
+                BaseItems bi
             """;
 
         await using var reader = await command.ExecuteReaderAsync();
@@ -49,6 +54,7 @@ public class DbIndexer(
                 reader.GetGuid(0).ToString(),
                 !reader.IsDBNull(1) ? reader.GetString(1) : null,
                 !reader.IsDBNull(2) ? reader.GetString(2) : null,
+                LibraryId: !reader.IsDBNull(18) ? reader.GetString(18).Replace("-", "") : null,
                 CommunityRating: !reader.IsDBNull(3) ? reader.GetDouble(3) : null,
                 Name: !reader.IsDBNull(4) ? reader.GetString(4) : null,
                 Overview: !reader.IsDBNull(5) ? reader.GetString(5) : null,

@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Controller.Channels;
+using MediaBrowser.Controller.Channels;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Entities.Movies;
@@ -137,16 +137,16 @@ public class MeilisearchMutateFilter(
         {
             // Build filter parts
             var filterParts = new List<string>();
-        
+
             // Type filter (OR between types)
             if (itemTypes.Count > 0)
             {
                 filterParts.Add($"({string.Join(" OR ", itemTypes.Select(t => $"type = \"{t}\""))})");
             }
-        
+
             // Additional filters
             filterParts.AddRange(additionalFilters.Select(f => $"{f.Key} = {f.Value}"));
-        
+
             // Combine with AND
             var filter = filterParts.Count > 0 ? string.Join(" AND ", filterParts) : null;
 
@@ -204,6 +204,14 @@ public class MeilisearchMutateFilter(
         logger.LogDebug("excludeItemTypes={excludeItemTypes}", string.Join(", ", excludeItemTypes));
         ToJellyfinTypes(excludeItemTypes).ToImmutableList().ForEach(it => filteredTypes.Remove(it));
 
+        // parentId filter by library
+        if (context.HttpContext.Request.Query.TryGetValue("parentId", out var parentIdValues)
+            && !string.IsNullOrEmpty(parentIdValues.FirstOrDefault()))
+        {
+            var parentId = parentIdValues.First()!.Replace("-", "");
+            logger.LogDebug("parentId={parentId}", parentId);
+            additionalFilters.Add(new KeyValuePair<string, string>("libraryId", $"\"{parentId}\""));
+        }
 
         // mediaTypes add types from the search
         var mediaTypes = context.GetQueryCommaOrMulti("mediaTypes");
@@ -240,7 +248,8 @@ public class MeilisearchMutateFilter(
         var limit = context.ActionArguments.TryGetValue("limit", out var limitObj)
             ? (int)limitObj!
             : 0;
-        var meilisearchItems = await Search(ch.Index, searchTerm, filteredTypes, additionalFilters, limit > 0 ? limit : 100);
+        var meilisearchItems =
+            await Search(ch.Index, searchTerm, filteredTypes, additionalFilters, limit > 0 ? limit : 100);
         // remove items that are not visible to the user
         var items = meilisearchItems.Select(it =>
         {
