@@ -129,27 +129,37 @@ public class MeilisearchMutateFilter(
         string searchTerm,
         List<string> itemTypes,
         List<KeyValuePair<string, string>> additionalFilters,
-        int limitPerType
+        int limit
     )
     {
         List<MeilisearchItem> items = [];
         try
         {
-            var additionQuery = additionalFilters.Select(it => $"{it.Key} = {it.Value}").ToList();
-            var additionQueryStr = additionQuery.Count > 0 ? $" AND {string.Join(" AND ", additionQuery)}" : "";
-            foreach (var itemType in itemTypes)
+            // Build filter parts
+            var filterParts = new List<string>();
+        
+            // Type filter (OR between types)
+            if (itemTypes.Count > 0)
             {
-                var results = await index.SearchAsync<MeilisearchItem>(
-                    searchTerm,
-                    new SearchQuery
-                    {
-                        Filter = $"type = \"{itemType}\" {additionQueryStr}",
-                        Limit = limitPerType,
-                        AttributesToSearchOn = Plugin.Instance?.Configuration.AttributesToSearchOn
-                    }
-                );
-                items.AddRange(results.Hits);
+                filterParts.Add($"({string.Join(" OR ", itemTypes.Select(t => $"type = \"{t}\""))})");
             }
+        
+            // Additional filters
+            filterParts.AddRange(additionalFilters.Select(f => $"{f.Key} = {f.Value}"));
+        
+            // Combine with AND
+            var filter = filterParts.Count > 0 ? string.Join(" AND ", filterParts) : null;
+
+            var results = await index.SearchAsync<MeilisearchItem>(
+                searchTerm,
+                new SearchQuery
+                {
+                    Filter = filter,
+                    Limit = limit > 0 ? limit : 100,
+                    AttributesToSearchOn = Plugin.Instance?.Configuration.AttributesToSearchOn
+                }
+            );
+            items.AddRange(results.Hits);
         }
         catch (MeilisearchCommunicationError e)
         {
@@ -159,7 +169,6 @@ public class MeilisearchMutateFilter(
 
         return items;
     }
-
 
     /// <summary>
     ///     Mutates the current search request context by overriding the ids with the results of the Meilisearch query.
@@ -231,11 +240,7 @@ public class MeilisearchMutateFilter(
         var limit = context.ActionArguments.TryGetValue("limit", out var limitObj)
             ? (int)limitObj!
             : 0;
-        var limitPreItem = filteredTypes.Count > 0 && limit > 0
-            ? Math.Clamp(limit / filteredTypes.Count, 30, 100)
-            : 30;
-        var meilisearchItems = await Search(ch.Index, searchTerm, filteredTypes, additionalFilters, limitPreItem);
-
+        var meilisearchItems = await Search(ch.Index, searchTerm, filteredTypes, additionalFilters, limit > 0 ? limit : 100);
         // remove items that are not visible to the user
         var items = meilisearchItems.Select(it =>
         {
