@@ -107,7 +107,7 @@ public class MeilisearchClientHolder(ILogger<MeilisearchClientHolder> logger, IS
         var index = meilisearch.Index(indexName);
 
         await index.UpdateFilterableAttributesAsync(
-            ["type", "parentId", "isFolder"]
+            ["type", "parentId", "isFolder", "libraryId"]
         );
 
         await index.UpdateSortableAttributesAsync(
@@ -115,7 +115,7 @@ public class MeilisearchClientHolder(ILogger<MeilisearchClientHolder> logger, IS
         );
 
         await index.UpdateSearchableAttributesAsync(Config.DefaultAttributesToSearchOn);
-        await index.UpdateDisplayedAttributesAsync(Config.DefaultAttributesToSearchOn.Concat(["guid", "type"]));
+        await index.UpdateDisplayedAttributesAsync(Config.DefaultAttributesToSearchOn.Concat(["guid", "type", "libraryId"]));
 
         // Set ranking rules to add critic rating
         await index.UpdateRankingRulesAsync(
